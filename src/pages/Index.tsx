@@ -1,51 +1,99 @@
 import { useState, useCallback } from 'react';
-import UploadScreen from '@/components/UploadScreen';
 import ParticleScene from '@/components/ParticleScene';
 import ModeSelector from '@/components/ModeSelector';
-import { processImage, ParticleData } from '@/lib/imageProcessor';
-import { VisualMode } from '@/components/ParticleScene';
+import {
+  ParticleData,
+  GalleryImage,
+  processImageToParticles,
+  loadImageFromSrc,
+  fileToDataURL,
+} from '@/lib/imageProcessor';
 
 export default function Index() {
+  const [images, setImages] = useState<GalleryImage[]>([]);
+  const [currentImageId, setCurrentImageId] = useState<number | null>(null);
   const [particleData, setParticleData] = useState<ParticleData | null>(null);
-  const [mode, setMode] = useState<VisualMode>('default');
-  const [loading, setLoading] = useState(false);
+  const [isExploded, setIsExploded] = useState(false);
+  const [particleCount, setParticleCount] = useState(0);
 
-  const handleFileSelect = useCallback(async (file: File) => {
-    setLoading(true);
-    try {
-      const data = await processImage(file);
-      setParticleData(data);
-    } catch (err) {
-      console.error('Image processing failed:', err);
-    } finally {
-      setLoading(false);
-    }
+  const loadParticlesForImage = useCallback(async (src: string) => {
+    const img = await loadImageFromSrc(src);
+    // Use lower resolution on mobile for performance
+    const isMobile = window.innerWidth < 768;
+    const resolution = isMobile ? 120 : 200;
+    const data = processImageToParticles(img, resolution);
+    setParticleData(data);
+    setParticleCount(data.count);
+    setIsExploded(false);
   }, []);
 
-  const handleBack = useCallback(() => {
-    setParticleData(null);
-    setMode('default');
-  }, []);
+  const handleFilesSelect = useCallback(
+    async (files: FileList) => {
+      const newImages: GalleryImage[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const src = await fileToDataURL(files[i]);
+        newImages.push({ id: Date.now() + Math.random(), src });
+      }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground font-mono">Processing particles…</p>
-        </div>
-      </div>
-    );
-  }
+      setImages((prev) => {
+        const updated = [...prev, ...newImages];
+        return updated;
+      });
 
-  if (!particleData) {
-    return <UploadScreen onFileSelect={handleFileSelect} />;
-  }
+      // Auto-select the first new image if nothing selected yet, or the first uploaded
+      const firstNew = newImages[0];
+      if (firstNew) {
+        setCurrentImageId(firstNew.id);
+        loadParticlesForImage(firstNew.src);
+      }
+    },
+    [loadParticlesForImage]
+  );
+
+  const handleSelectImage = useCallback(
+    (id: number) => {
+      if (id === currentImageId) return;
+      setCurrentImageId(id);
+      const img = images.find((i) => i.id === id);
+      if (img) loadParticlesForImage(img.src);
+    },
+    [currentImageId, images, loadParticlesForImage]
+  );
+
+  const handleDeleteImage = useCallback(
+    (id: number) => {
+      setImages((prev) => {
+        const filtered = prev.filter((img) => img.id !== id);
+        if (id === currentImageId) {
+          if (filtered.length > 0) {
+            const next = filtered[filtered.length - 1];
+            setCurrentImageId(next.id);
+            loadParticlesForImage(next.src);
+          } else {
+            setCurrentImageId(null);
+            setParticleData(null);
+            setParticleCount(0);
+          }
+        }
+        return filtered;
+      });
+    },
+    [currentImageId, loadParticlesForImage]
+  );
 
   return (
-    <div className="relative w-full h-screen">
-      <ParticleScene data={particleData} mode={mode} />
-      <ModeSelector mode={mode} onModeChange={setMode} onBack={handleBack} />
+    <div className="relative w-full h-screen overflow-hidden">
+      <ParticleScene data={particleData} isExploded={isExploded} />
+      <ModeSelector
+        images={images}
+        currentImageId={currentImageId}
+        isExploded={isExploded}
+        particleCount={particleCount}
+        onToggleExplode={() => setIsExploded((v) => !v)}
+        onSelectImage={handleSelectImage}
+        onDeleteImage={handleDeleteImage}
+        onFilesSelect={handleFilesSelect}
+      />
     </div>
   );
 }
