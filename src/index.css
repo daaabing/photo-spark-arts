@@ -6,48 +6,48 @@
 
 @layer base {
   :root {
-    --background: 240 15% 4%;
-    --foreground: 0 0% 95%;
+    /* Zen Pond Palette */
+    --background: 90 22% 66%;       /* Sage #A5BC91 */
+    --foreground: 30 8% 9%;         /* Ink #1A1816 */
 
-    --card: 240 12% 8%;
+    --card: 0 0% 6%;                /* Void #101010 */
     --card-foreground: 0 0% 95%;
 
-    --popover: 240 12% 8%;
+    --popover: 0 0% 6%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 265 90% 65%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 35 84% 62%;          /* Energy #F2A24A */
+    --primary-foreground: 30 8% 9%;
 
-    --secondary: 240 10% 14%;
-    --secondary-foreground: 0 0% 90%;
+    --secondary: 90 15% 58%;        /* Darker sage */
+    --secondary-foreground: 30 8% 9%;
 
-    --muted: 240 10% 12%;
-    --muted-foreground: 240 5% 50%;
+    --muted: 90 18% 60%;            /* Muted sage */
+    --muted-foreground: 30 8% 30%;
 
-    --accent: 180 80% 55%;
-    --accent-foreground: 240 15% 4%;
+    --accent: 35 84% 62%;           /* Energy */
+    --accent-foreground: 30 8% 9%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 240 10% 16%;
-    --input: 240 10% 16%;
-    --ring: 265 90% 65%;
+    --border: 90 15% 55%;
+    --input: 90 15% 55%;
+    --ring: 35 84% 62%;
 
     --radius: 1rem;
 
-    --glow-primary: 265 90% 65%;
-    --glow-accent: 180 80% 55%;
-    --surface-glass: 240 15% 8%;
+    --lens-bg: 0 0% 6%;             /* Void black for lens */
+    --surface-glass: 90 18% 58%;
 
-    --sidebar-background: 240 15% 4%;
-    --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 265 90% 65%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 10% 14%;
-    --sidebar-accent-foreground: 0 0% 90%;
-    --sidebar-border: 240 10% 16%;
-    --sidebar-ring: 265 90% 65%;
+    --sidebar-background: 90 22% 66%;
+    --sidebar-foreground: 30 8% 9%;
+    --sidebar-primary: 35 84% 62%;
+    --sidebar-primary-foreground: 30 8% 9%;
+    --sidebar-accent: 90 15% 58%;
+    --sidebar-accent-foreground: 30 8% 9%;
+    --sidebar-border: 90 15% 55%;
+    --sidebar-ring: 35 84% 62%;
   }
 }
 
@@ -81,16 +81,6 @@
     border: 1px solid hsl(var(--border) / 0.5);
   }
 
-  .glow-primary {
-    box-shadow: 0 0 20px hsl(var(--glow-primary) / 0.3),
-                0 0 60px hsl(var(--glow-primary) / 0.1);
-  }
-
-  .glow-accent {
-    box-shadow: 0 0 20px hsl(var(--glow-accent) / 0.3),
-                0 0 60px hsl(var(--glow-accent) / 0.1);
-  }
-
   .text-gradient {
     background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
     -webkit-background-clip: text;
@@ -105,5 +95,37 @@
     padding-bottom: env(safe-area-inset-bottom, 0.5rem);
   }
 
-  .thumb-container:hover .delete-btn { opacity: 1; }
+  .lens-container {
+    background: hsl(var(--lens-bg));
+    border-radius: 50%;
+    overflow: hidden;
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.3),
+      inset 0 2px 8px rgba(0, 0, 0, 0.5),
+      0 0 0 4px hsl(var(--lens-bg) / 0.3);
+  }
+
+  .mode-pill {
+    background: hsl(var(--foreground));
+    color: hsl(var(--background));
+    border-radius: 9999px;
+    padding: 0.625rem 1.25rem;
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+
+  .mode-pill-inactive {
+    background: transparent;
+    color: hsl(var(--foreground) / 0.6);
+    border-radius: 9999px;
+    padding: 0.625rem 1.25rem;
+    font-weight: 500;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
 }
