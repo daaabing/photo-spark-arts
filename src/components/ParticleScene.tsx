@@ -258,7 +258,7 @@ export default function ParticleScene({ data, mode, gravity, params }: ParticleS
   }, [gravity]);
 
   useEffect(() => {
-    if (!refs.current) return;
+    if (!refs.current?.material || !refs.current?.bloomPass) return;
     const pr = Math.min(window.devicePixelRatio, 2);
     refs.current.material.uniforms.uSize.value = params.size * pr;
     refs.current.material.uniforms.uRepX.value = params.repX;
