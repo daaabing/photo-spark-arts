@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
-import ParticleScene, { VisualMode } from '@/components/ParticleScene';
+import ParticleScene, { VisualMode, SceneParams } from '@/components/ParticleScene';
+import ControlPanel from '@/components/ControlPanel';
 import {
   ParticleData,
   GalleryImage,
@@ -7,7 +8,7 @@ import {
   loadImageFromSrc,
   fileToDataURL,
 } from '@/lib/imageProcessor';
-import { ArrowLeft, MoreHorizontal, Orbit, Droplets, Zap, Camera, Upload } from 'lucide-react';
+import { ArrowLeft, Orbit, Droplets, Zap, Camera, Upload, Plus } from 'lucide-react';
 
 const MODES: { id: VisualMode; label: string; icon: React.ReactNode }[] = [
   { id: 'galaxy', label: 'Galaxy', icon: <Orbit className="w-4 h-4" /> },
@@ -15,20 +16,37 @@ const MODES: { id: VisualMode; label: string; icon: React.ReactNode }[] = [
   { id: 'glitch', label: 'Glitch', icon: <Zap className="w-4 h-4" /> },
 ];
 
+const DEFAULT_PARAMS: SceneParams = {
+  size: 0.2,
+  brightness: 1.6,
+  repX: 3.0,
+  repY: 3.0,
+  repZ: 8.0,
+  activity: 1.0,
+};
+
 export default function Index() {
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [currentImageId, setCurrentImageId] = useState<number | null>(null);
   const [particleData, setParticleData] = useState<ParticleData | null>(null);
+  const [particleCount, setParticleCount] = useState(0);
   const [mode, setMode] = useState<VisualMode>('galaxy');
   const [gravity, setGravity] = useState(0.5);
+  const [params, setParams] = useState<SceneParams>(DEFAULT_PARAMS);
+  const [panelOpen, setPanelOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
 
   const loadParticlesForImage = useCallback(async (src: string) => {
-    const img = await loadImageFromSrc(src);
-    const isMobile = window.innerWidth < 768;
-    const data = processImageToParticles(img, isMobile ? 120 : 200);
-    setParticleData(data);
+    try {
+      const img = await loadImageFromSrc(src);
+      const isMobile = window.innerWidth < 768;
+      const data = processImageToParticles(img, isMobile ? 120 : 200);
+      setParticleData(data);
+      setParticleCount(data.count);
+    } catch (err) {
+      console.error('Failed to process image:', err);
+    }
   }, []);
 
   const handleFilesSelect = useCallback(
@@ -69,6 +87,7 @@ export default function Index() {
     setParticleData(null);
     setImages([]);
     setCurrentImageId(null);
+    setParticleCount(0);
   }, []);
 
   const hasImage = particleData !== null;
@@ -96,32 +115,40 @@ export default function Index() {
             Particlelife
           </h1>
         </div>
-        <button className="p-2 -mr-2 active:scale-90 transition-transform">
-          <MoreHorizontal className="w-6 h-6 text-foreground/50" />
-        </button>
+        <div className="w-10" />
       </div>
 
+      {/* Control panel */}
+      <ControlPanel params={params} onChange={setParams} open={panelOpen} onToggle={() => setPanelOpen((v) => !v)} />
+
       {/* Circular Lens */}
-      <div className="flex-1 flex items-center justify-center w-full px-6 py-4 z-10">
-        <div className="lens-container relative" style={{ width: 'min(80vw, 400px)', height: 'min(80vw, 400px)' }}>
-          {hasImage ? (
-            <ParticleScene data={particleData} mode={mode} gravity={gravity} />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-              <div className="text-4xl animate-pulse">✦</div>
-              <p className="text-card-foreground/50 text-xs font-mono tracking-wider uppercase text-center px-8">
+      <div className="flex-1 flex items-center justify-center w-full px-6 py-2 z-10">
+        <div
+          className="lens-container relative"
+          style={{
+            width: 'min(78vw, 420px)',
+            height: 'min(78vw, 420px)',
+          }}
+        >
+          <ParticleScene data={particleData} mode={mode} gravity={gravity} params={params} />
+          {!hasImage && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10">
+              <div className="text-4xl animate-pulse" style={{ color: 'hsl(0 0% 100% / 0.2)' }}>✦</div>
+              <p className="text-xs font-mono tracking-wider uppercase text-center px-8" style={{ color: 'hsl(0 0% 100% / 0.3)' }}>
                 Upload a photo to begin
               </p>
               <div className="flex gap-3 mt-2">
                 <button
                   onClick={() => cameraRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary text-primary-foreground text-xs font-display font-semibold active:scale-95 transition-transform"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-display font-semibold active:scale-95 transition-transform"
+                  style={{ background: 'hsl(35 84% 62%)', color: 'hsl(30 8% 9%)' }}
                 >
                   <Camera className="w-4 h-4" /> Capture
                 </button>
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-card-foreground/20 text-card-foreground text-xs font-display font-medium active:scale-95 transition-transform"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-display font-medium active:scale-95 transition-transform"
+                  style={{ border: '1px solid hsl(0 0% 100% / 0.2)', color: 'hsl(0 0% 100% / 0.7)' }}
                 >
                   <Upload className="w-4 h-4" /> Upload
                 </button>
@@ -131,8 +158,15 @@ export default function Index() {
         </div>
       </div>
 
+      {/* Particle count */}
+      {particleCount > 0 && (
+        <p className="text-[10px] font-mono text-foreground/40 z-10 -mt-1">
+          {particleCount.toLocaleString()} particles
+        </p>
+      )}
+
       {/* Controls area */}
-      <div className="w-full px-6 pb-8 z-10 space-y-5 safe-bottom">
+      <div className="w-full px-6 pb-6 z-10 space-y-4 safe-bottom">
         {/* Gravity slider */}
         <div className="flex items-center gap-4">
           <span className="text-[10px] font-mono tracking-[0.15em] uppercase text-foreground/60 flex-shrink-0">
@@ -144,7 +178,7 @@ export default function Index() {
             max="100"
             value={Math.round(gravity * 100)}
             onChange={(e) => setGravity(Number(e.target.value) / 100)}
-            className="flex-1 h-[2px] appearance-none bg-foreground/20 rounded-full outline-none accent-foreground
+            className="flex-1 h-[2px] appearance-none bg-foreground/20 rounded-full outline-none
               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:cursor-pointer"
           />
@@ -159,9 +193,7 @@ export default function Index() {
             <button
               key={m.id}
               onClick={() => setMode(m.id)}
-              className={`flex items-center gap-2 ${
-                mode === m.id ? 'mode-pill' : 'mode-pill-inactive'
-              }`}
+              className={`flex items-center gap-2 ${mode === m.id ? 'mode-pill' : 'mode-pill-inactive'}`}
             >
               {m.icon}
               {m.label}
@@ -169,22 +201,20 @@ export default function Index() {
           ))}
         </div>
 
-        {/* Hint text */}
+        {/* Hint */}
         <p className="text-center text-[9px] font-mono tracking-[0.2em] uppercase text-foreground/35">
           Multi-touch inside the lens
         </p>
 
-        {/* Thumbnail strip (if multiple images) */}
-        {images.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto no-scrollbar justify-center">
+        {/* Thumbnails */}
+        {images.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto no-scrollbar justify-center items-center">
             {images.map((img) => (
               <button
                 key={img.id}
                 onClick={() => handleSelectImage(img.id)}
                 className={`flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 transition-all active:scale-90 ${
-                  currentImageId === img.id
-                    ? 'border-primary scale-110'
-                    : 'border-transparent opacity-60'
+                  currentImageId === img.id ? 'border-primary scale-110' : 'border-transparent opacity-60'
                 }`}
               >
                 <img src={img.src} alt="" className="w-full h-full object-cover" />
@@ -194,19 +224,7 @@ export default function Index() {
               onClick={() => fileRef.current?.click()}
               className="flex-shrink-0 w-10 h-10 rounded-lg border-2 border-dashed border-foreground/20 flex items-center justify-center text-foreground/30 active:scale-90"
             >
-              +
-            </button>
-          </div>
-        )}
-
-        {/* Add more button when only 1 image */}
-        {images.length === 1 && (
-          <div className="flex justify-center">
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="text-[10px] font-mono tracking-wider uppercase text-foreground/40 active:text-foreground/60 transition-colors"
-            >
-              + Add more photos
+              <Plus className="w-4 h-4" />
             </button>
           </div>
         )}
