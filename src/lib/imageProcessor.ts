@@ -1,97 +1,82 @@
 export interface ParticleData {
-  positions: Float32Array;
-  colors: Float32Array;
-  originalPositions: Float32Array;
   count: number;
+  targetPos: Float32Array;
+  colors: Float32Array;
+  randomPos: Float32Array;
+  scales: Float32Array;
 }
 
-const SAMPLE_SIZE = 128;
+export interface GalleryImage {
+  id: number;
+  src: string;
+}
 
-export function processImage(file: File): Promise<ParticleData> {
+export function processImageToParticles(
+  img: HTMLImageElement,
+  resolution = 150
+): ParticleData {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  let w = img.width;
+  let h = img.height;
+  const ratio = Math.min(resolution / w, resolution / h);
+  w = Math.floor(w * ratio);
+  h = Math.floor(h * ratio);
+
+  canvas.width = w;
+  canvas.height = h;
+  ctx.drawImage(img, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  const targetPosArr: number[] = [];
+  const colorsArr: number[] = [];
+  const randomPosArr: number[] = [];
+  const scalesArr: number[] = [];
+  const threshold = 15;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = data[i],
+        g = data[i + 1],
+        b = data[i + 2],
+        a = data[i + 3];
+      if (a > 50 && r + g + b > threshold) {
+        targetPosArr.push((x - w / 2) * 0.08, -(y - h / 2) * 0.08, 0);
+        colorsArr.push(r / 255, g / 255, b / 255);
+        randomPosArr.push(
+          (Math.random() - 0.5) * 30,
+          (Math.random() - 0.5) * 30,
+          (Math.random() - 0.5) * 20
+        );
+        scalesArr.push(Math.random() * 0.5 + 0.5);
+      }
+    }
+  }
+
+  return {
+    count: scalesArr.length,
+    targetPos: new Float32Array(targetPosArr),
+    colors: new Float32Array(colorsArr),
+    randomPos: new Float32Array(randomPosArr),
+    scales: new Float32Array(scalesArr),
+  };
+}
+
+export function loadImageFromSrc(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    const url = URL.createObjectURL(file);
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
 
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = SAMPLE_SIZE;
-      canvas.height = SAMPLE_SIZE;
-      const ctx = canvas.getContext('2d')!;
-
-      // Draw image centered/cropped
-      const aspect = img.width / img.height;
-      let sx = 0, sy = 0, sw = img.width, sh = img.height;
-      if (aspect > 1) {
-        sx = (img.width - img.height) / 2;
-        sw = img.height;
-      } else {
-        sy = (img.height - img.width) / 2;
-        sh = img.width;
-      }
-
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
-      const imageData = ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
-      const pixels = imageData.data;
-
-      const count = SAMPLE_SIZE * SAMPLE_SIZE;
-      const positions = new Float32Array(count * 3);
-      const colors = new Float32Array(count * 3);
-      const originalPositions = new Float32Array(count * 3);
-
-      for (let i = 0; i < count; i++) {
-        const px = i % SAMPLE_SIZE;
-        const py = Math.floor(i / SAMPLE_SIZE);
-        const pi = i * 4;
-
-        const r = pixels[pi] / 255;
-        const g = pixels[pi + 1] / 255;
-        const b = pixels[pi + 2] / 255;
-        const a = pixels[pi + 3] / 255;
-
-        // Skip transparent pixels
-        if (a < 0.1) {
-          positions[i * 3] = 0;
-          positions[i * 3 + 1] = 0;
-          positions[i * 3 + 2] = -999;
-          originalPositions[i * 3] = 0;
-          originalPositions[i * 3 + 1] = 0;
-          originalPositions[i * 3 + 2] = -999;
-          colors[i * 3] = 0;
-          colors[i * 3 + 1] = 0;
-          colors[i * 3 + 2] = 0;
-          continue;
-        }
-
-        const brightness = (r + g + b) / 3;
-
-        // Map to -5..5 range, centered
-        const x = ((px / SAMPLE_SIZE) - 0.5) * 10;
-        const y = ((1 - py / SAMPLE_SIZE) - 0.5) * 10;
-        const z = (brightness - 0.5) * 3; // Depth from brightness
-
-        positions[i * 3] = x;
-        positions[i * 3 + 1] = y;
-        positions[i * 3 + 2] = z;
-
-        originalPositions[i * 3] = x;
-        originalPositions[i * 3 + 1] = y;
-        originalPositions[i * 3 + 2] = z;
-
-        colors[i * 3] = r;
-        colors[i * 3 + 1] = g;
-        colors[i * 3 + 2] = b;
-      }
-
-      resolve({ positions, colors, originalPositions, count });
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Failed to load image'));
-    };
-
-    img.src = url;
+export function fileToDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target!.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 }
