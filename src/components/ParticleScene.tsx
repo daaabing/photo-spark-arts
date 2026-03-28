@@ -7,12 +7,21 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { particleVertexShader, particleFragmentShader } from '@/lib/shaders';
 import { ParticleData } from '@/lib/imageProcessor';
 
+export type VisualMode = 'galaxy' | 'liquid' | 'glitch';
+
+const MODE_MAP: Record<VisualMode, number> = {
+  galaxy: 0,
+  liquid: 1,
+  glitch: 2,
+};
+
 interface ParticleSceneProps {
   data: ParticleData | null;
-  isExploded: boolean;
+  mode: VisualMode;
+  gravity: number; // 0-1
 }
 
-export default function ParticleScene({ data, isExploded }: ParticleSceneProps) {
+export default function ParticleScene({ data, mode, gravity }: ParticleSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -41,7 +50,6 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
     }
   }, []);
 
-  // Init scene once
   useEffect(() => {
     if (!containerRef.current) return;
     cleanup();
@@ -52,12 +60,12 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
     const pixelRatio = Math.min(window.devicePixelRatio, 2);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x000000, 0.02);
 
     const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
     camera.position.set(0, 0, 20);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setClearColor(0x101010, 1);
     renderer.setSize(w, h);
     renderer.setPixelRatio(pixelRatio);
     container.appendChild(renderer.domElement);
@@ -69,14 +77,8 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
     controls.minDistance = 8;
     controls.maxDistance = 40;
 
-    // Bloom post-processing
     const renderPass = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(w, h),
-      1.6, // strength
-      0.4,
-      0.85
-    );
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.4, 0.4, 0.85);
     bloomPass.threshold = 0.05;
     bloomPass.radius = 0.5;
 
@@ -97,6 +99,8 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
         uRepZ: { value: 8.0 },
         uActivity: { value: 1.0 },
         uProgress: { value: 1.0 },
+        uMode: { value: MODE_MAP[mode] },
+        uGravity: { value: gravity },
       },
       transparent: true,
       depthWrite: false,
@@ -107,7 +111,6 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
     const raycaster = new THREE.Raycaster();
     const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
 
-    // Pointer events (mouse + touch)
     const updatePointer = (clientX: number, clientY: number) => {
       const rect = renderer.domElement.getBoundingClientRect();
       const mouse = new THREE.Vector2(
@@ -120,19 +123,11 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
       if (pt) mousePosition.copy(pt);
     };
 
-    const onPointerMove = (e: PointerEvent) => {
-      updatePointer(e.clientX, e.clientY);
-    };
-
+    const onPointerMove = (e: PointerEvent) => updatePointer(e.clientX, e.clientY);
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        updatePointer(e.touches[0].clientX, e.touches[0].clientY);
-      }
+      if (e.touches.length === 1) updatePointer(e.touches[0].clientX, e.touches[0].clientY);
     };
-
-    const onPointerLeave = () => {
-      mousePosition.set(999, 999, 0);
-    };
+    const onPointerLeave = () => mousePosition.set(999, 999, 0);
 
     renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: true });
@@ -145,44 +140,28 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
       camera.updateProjectionMatrix();
       renderer.setSize(cw, ch);
       composer.setSize(cw, ch);
-      material.uniforms.uSize.value = 0.2 * Math.min(window.devicePixelRatio, 2);
     };
     window.addEventListener('resize', onResize);
 
     const clock = new THREE.Clock();
     let animId = 0;
-
     const animate = () => {
       animId = requestAnimationFrame(animate);
       const dt = clock.getDelta();
       const elapsed = clock.getElapsedTime();
-
       material.uniforms.uTime.value = elapsed;
-
-      // Smooth mouse interpolation
       const currentMouse = material.uniforms.uMouse.value as THREE.Vector3;
       currentMouse.x += (mousePosition.x - currentMouse.x) * 10 * dt;
       currentMouse.y += (mousePosition.y - currentMouse.y) * 10 * dt;
-
       controls.update();
       composer.render();
     };
     animId = requestAnimationFrame(animate);
 
     refs.current = {
-      renderer,
-      scene,
-      camera,
-      controls,
-      material,
-      composer,
-      points: null,
-      geometry: null,
-      mousePosition,
-      raycaster,
-      interactionPlane,
-      uProgressValue: 1.0,
-      animId,
+      renderer, scene, camera, controls, material, composer,
+      points: null, geometry: null, mousePosition, raycaster,
+      interactionPlane, uProgressValue: 1.0, animId,
     };
 
     return () => {
@@ -198,52 +177,54 @@ export default function ParticleScene({ data, isExploded }: ParticleSceneProps) 
   useEffect(() => {
     if (!refs.current || !data) return;
     const { scene, material } = refs.current;
-
     if (refs.current.points) {
       scene.remove(refs.current.points);
       refs.current.geometry?.dispose();
     }
-
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('aTargetPosition', new THREE.BufferAttribute(data.targetPos, 3));
     geometry.setAttribute('aRandomPosition', new THREE.BufferAttribute(data.randomPos, 3));
     geometry.setAttribute('aColor', new THREE.BufferAttribute(data.colors, 3));
     geometry.setAttribute('aScale', new THREE.BufferAttribute(data.scales, 1));
     geometry.setAttribute('position', new THREE.BufferAttribute(data.targetPos.slice(), 3));
-
     refs.current.geometry = geometry;
     const points = new THREE.Points(geometry, material);
     refs.current.points = points;
     scene.add(points);
-
-    // Reset progress to trigger assemble animation
     refs.current.uProgressValue = 0;
     material.uniforms.uProgress.value = 0;
   }, [data]);
 
-  // Animate progress for explode/assemble
+  // Animate progress
   useEffect(() => {
     if (!refs.current) return;
-    const target = isExploded ? 0.0 : 1.0;
     let animId: number;
-
     const updateProgress = () => {
       if (!refs.current) return;
       const current = refs.current.uProgressValue;
-      const next = current + (target - current) * 0.05;
+      const next = current + (1.0 - current) * 0.05;
       refs.current.uProgressValue = next;
       refs.current.material.uniforms.uProgress.value = next;
-      if (Math.abs(target - next) > 0.001) {
+      if (Math.abs(1.0 - next) > 0.001) {
         animId = requestAnimationFrame(updateProgress);
       } else {
-        refs.current.material.uniforms.uProgress.value = target;
-        refs.current.uProgressValue = target;
+        refs.current.material.uniforms.uProgress.value = 1.0;
+        refs.current.uProgressValue = 1.0;
       }
     };
     updateProgress();
-
     return () => cancelAnimationFrame(animId);
-  }, [isExploded, data]);
+  }, [data]);
+
+  // Update mode
+  useEffect(() => {
+    if (refs.current) refs.current.material.uniforms.uMode.value = MODE_MAP[mode];
+  }, [mode]);
+
+  // Update gravity
+  useEffect(() => {
+    if (refs.current) refs.current.material.uniforms.uGravity.value = gravity;
+  }, [gravity]);
 
   return <div ref={containerRef} className="absolute inset-0" />;
 }
