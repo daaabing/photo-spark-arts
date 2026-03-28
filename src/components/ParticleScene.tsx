@@ -15,13 +15,23 @@ const MODE_MAP: Record<VisualMode, number> = {
   glitch: 2,
 };
 
+export interface SceneParams {
+  size: number;
+  brightness: number;
+  repX: number;
+  repY: number;
+  repZ: number;
+  activity: number;
+}
+
 interface ParticleSceneProps {
   data: ParticleData | null;
   mode: VisualMode;
-  gravity: number; // 0-1
+  gravity: number;
+  params: SceneParams;
 }
 
-export default function ParticleScene({ data, mode, gravity }: ParticleSceneProps) {
+export default function ParticleScene({ data, mode, gravity, params }: ParticleSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -30,6 +40,7 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
     controls: OrbitControls;
     material: THREE.ShaderMaterial;
     composer: EffectComposer;
+    bloomPass: UnrealBloomPass;
     points: THREE.Points | null;
     geometry: THREE.BufferGeometry | null;
     mousePosition: THREE.Vector3;
@@ -37,6 +48,7 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
     interactionPlane: THREE.Plane;
     uProgressValue: number;
     animId: number;
+    clock: THREE.Clock;
   } | null>(null);
 
   const cleanup = useCallback(() => {
@@ -50,16 +62,18 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
     }
   }, []);
 
+  // Init scene
   useEffect(() => {
     if (!containerRef.current) return;
     cleanup();
 
     const container = containerRef.current;
-    const w = container.clientWidth;
-    const h = container.clientHeight;
+    const w = container.clientWidth || 400;
+    const h = container.clientHeight || 400;
     const pixelRatio = Math.min(window.devicePixelRatio, 2);
 
     const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.02);
 
     const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
     camera.position.set(0, 0, 20);
@@ -77,8 +91,14 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
     controls.minDistance = 8;
     controls.maxDistance = 40;
 
+    // Bloom
     const renderPass = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.4, 0.4, 0.85);
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(w, h),
+      params.brightness,
+      0.4,
+      0.85
+    );
     bloomPass.threshold = 0.05;
     bloomPass.radius = 0.5;
 
@@ -91,13 +111,13 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
       fragmentShader: particleFragmentShader,
       uniforms: {
         uTime: { value: 0 },
-        uSize: { value: 0.2 * pixelRatio },
+        uSize: { value: params.size * pixelRatio },
         uMouse: { value: new THREE.Vector3(999, 999, 999) },
         uInteractionRadius: { value: 4.0 },
-        uRepX: { value: 3.0 },
-        uRepY: { value: 3.0 },
-        uRepZ: { value: 8.0 },
-        uActivity: { value: 1.0 },
+        uRepX: { value: params.repX },
+        uRepY: { value: params.repY },
+        uRepZ: { value: params.repZ },
+        uActivity: { value: params.activity },
         uProgress: { value: 1.0 },
         uMode: { value: MODE_MAP[mode] },
         uGravity: { value: gravity },
@@ -134,8 +154,8 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
     renderer.domElement.addEventListener('pointerleave', onPointerLeave);
 
     const onResize = () => {
-      const cw = container.clientWidth;
-      const ch = container.clientHeight;
+      const cw = container.clientWidth || 400;
+      const ch = container.clientHeight || 400;
       camera.aspect = cw / ch;
       camera.updateProjectionMatrix();
       renderer.setSize(cw, ch);
@@ -159,9 +179,9 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
     animId = requestAnimationFrame(animate);
 
     refs.current = {
-      renderer, scene, camera, controls, material, composer,
+      renderer, scene, camera, controls, material, composer, bloomPass,
       points: null, geometry: null, mousePosition, raycaster,
-      interactionPlane, uProgressValue: 1.0, animId,
+      interactionPlane, uProgressValue: 1.0, animId, clock,
     };
 
     return () => {
@@ -175,27 +195,37 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
 
   // Update geometry when data changes
   useEffect(() => {
-    if (!refs.current || !data) return;
+    if (!refs.current) return;
     const { scene, material } = refs.current;
+
+    // Remove old
     if (refs.current.points) {
       scene.remove(refs.current.points);
       refs.current.geometry?.dispose();
+      refs.current.points = null;
+      refs.current.geometry = null;
     }
+
+    if (!data || data.count === 0) return;
+
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('aTargetPosition', new THREE.BufferAttribute(data.targetPos, 3));
-    geometry.setAttribute('aRandomPosition', new THREE.BufferAttribute(data.randomPos, 3));
-    geometry.setAttribute('aColor', new THREE.BufferAttribute(data.colors, 3));
-    geometry.setAttribute('aScale', new THREE.BufferAttribute(data.scales, 1));
-    geometry.setAttribute('position', new THREE.BufferAttribute(data.targetPos.slice(), 3));
+    geometry.setAttribute('aTargetPosition', new THREE.Float32BufferAttribute(data.targetPos, 3));
+    geometry.setAttribute('aRandomPosition', new THREE.Float32BufferAttribute(data.randomPos, 3));
+    geometry.setAttribute('aColor', new THREE.Float32BufferAttribute(data.colors, 3));
+    geometry.setAttribute('aScale', new THREE.Float32BufferAttribute(data.scales, 1));
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(data.targetPos), 3));
+
     refs.current.geometry = geometry;
     const points = new THREE.Points(geometry, material);
     refs.current.points = points;
     scene.add(points);
+
+    // Trigger assemble animation
     refs.current.uProgressValue = 0;
     material.uniforms.uProgress.value = 0;
   }, [data]);
 
-  // Animate progress
+  // Animate progress (assemble)
   useEffect(() => {
     if (!refs.current) return;
     let animId: number;
@@ -216,15 +246,27 @@ export default function ParticleScene({ data, mode, gravity }: ParticleSceneProp
     return () => cancelAnimationFrame(animId);
   }, [data]);
 
-  // Update mode
+  // Update uniforms reactively
   useEffect(() => {
-    if (refs.current) refs.current.material.uniforms.uMode.value = MODE_MAP[mode];
+    if (!refs.current) return;
+    refs.current.material.uniforms.uMode.value = MODE_MAP[mode];
   }, [mode]);
 
-  // Update gravity
   useEffect(() => {
-    if (refs.current) refs.current.material.uniforms.uGravity.value = gravity;
+    if (!refs.current) return;
+    refs.current.material.uniforms.uGravity.value = gravity;
   }, [gravity]);
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  useEffect(() => {
+    if (!refs.current) return;
+    const pr = Math.min(window.devicePixelRatio, 2);
+    refs.current.material.uniforms.uSize.value = params.size * pr;
+    refs.current.material.uniforms.uRepX.value = params.repX;
+    refs.current.material.uniforms.uRepY.value = params.repY;
+    refs.current.material.uniforms.uRepZ.value = params.repZ;
+    refs.current.material.uniforms.uActivity.value = params.activity;
+    refs.current.bloomPass.strength = params.brightness;
+  }, [params]);
+
+  return <div ref={containerRef} className="w-full h-full" style={{ position: 'relative' }} />;
 }
