@@ -97,4 +97,13 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0.5rem);
+  }
+
+  .thumb-container:hover .delete-btn { opacity: 1; }
 }
