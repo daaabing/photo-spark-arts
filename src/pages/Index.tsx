@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import ParticleScene, { VisualMode, SceneParams } from '@/components/ParticleScene';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import ParticleScene, { SceneParams } from '@/components/ParticleScene';
 import ControlPanel from '@/components/ControlPanel';
 import {
   ParticleData,
@@ -8,13 +8,7 @@ import {
   loadImageFromSrc,
   fileToDataURL,
 } from '@/lib/imageProcessor';
-import { ArrowLeft, Orbit, Droplets, Zap, Camera, Upload, Plus } from 'lucide-react';
-
-const MODES: { id: VisualMode; label: string; icon: React.ReactNode }[] = [
-  { id: 'galaxy', label: 'Galaxy', icon: <Orbit className="w-4 h-4" /> },
-  { id: 'liquid', label: 'Liquid', icon: <Droplets className="w-4 h-4" /> },
-  { id: 'glitch', label: 'Glitch', icon: <Zap className="w-4 h-4" /> },
-];
+import { Upload, Plus, X } from 'lucide-react';
 
 const DEFAULT_PARAMS: SceneParams = {
   size: 0.2,
@@ -30,20 +24,18 @@ export default function Index() {
   const [currentImageId, setCurrentImageId] = useState<number | null>(null);
   const [particleData, setParticleData] = useState<ParticleData | null>(null);
   const [particleCount, setParticleCount] = useState(0);
-  const [mode, setMode] = useState<VisualMode>('galaxy');
-  const [gravity, setGravity] = useState(0.5);
+  const [isExploded, setIsExploded] = useState(false);
   const [params, setParams] = useState<SceneParams>(DEFAULT_PARAMS);
   const [panelOpen, setPanelOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
 
   const loadParticlesForImage = useCallback(async (src: string) => {
     try {
       const img = await loadImageFromSrc(src);
-      const isMobile = window.innerWidth < 768;
-      const data = processImageToParticles(img, isMobile ? 120 : 200);
+      const data = processImageToParticles(img, 200);
       setParticleData(data);
       setParticleCount(data.count);
+      setIsExploded(false);
     } catch (err) {
       console.error('Failed to process image:', err);
     }
@@ -66,15 +58,12 @@ export default function Index() {
     [loadParticlesForImage]
   );
 
-  const handleSelectImage = useCallback(
-    (id: number) => {
-      if (id === currentImageId) return;
-      setCurrentImageId(id);
-      const img = images.find((i) => i.id === id);
-      if (img) loadParticlesForImage(img.src);
-    },
-    [currentImageId, images, loadParticlesForImage]
-  );
+  // When currentImageId changes, load that image
+  useEffect(() => {
+    if (!currentImageId || images.length === 0) return;
+    const imgData = images.find((i) => i.id === currentImageId);
+    if (imgData) loadParticlesForImage(imgData.src);
+  }, [currentImageId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -83,152 +72,150 @@ export default function Index() {
     }
   };
 
-  const handleBack = useCallback(() => {
-    setParticleData(null);
-    setImages([]);
-    setCurrentImageId(null);
-    setParticleCount(0);
-  }, []);
-
-  const hasImage = particleData !== null;
+  const handleDelete = (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    setImages((prev) => {
+      const filtered = prev.filter((img) => img.id !== id);
+      if (id === currentImageId) {
+        if (filtered.length > 0) {
+          setCurrentImageId(filtered[filtered.length - 1].id);
+        } else {
+          setCurrentImageId(null);
+          setParticleData(null);
+          setParticleCount(0);
+        }
+      }
+      return filtered;
+    });
+  };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-background flex flex-col items-center">
-      {/* Hidden inputs */}
+    <div className="relative w-screen h-screen overflow-hidden" style={{ background: '#050505' }}>
       <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
 
-      {/* Header */}
-      <div className="w-full flex items-center justify-between px-5 pt-12 pb-2 z-10">
-        {hasImage ? (
-          <button onClick={handleBack} className="p-2 -ml-2 active:scale-90 transition-transform">
-            <ArrowLeft className="w-6 h-6 text-foreground" />
-          </button>
-        ) : (
-          <div className="w-10" />
-        )}
-        <div className="text-center">
-          <p className="text-[10px] font-mono tracking-[0.2em] uppercase text-foreground/50">
-            The Zen Pond
-          </p>
-          <h1 className="font-display text-xl font-bold tracking-tight text-foreground uppercase">
-            Particlelife
-          </h1>
-        </div>
-        <div className="w-10" />
-      </div>
+      {/* Full-screen particle canvas */}
+      <ParticleScene data={particleData} params={params} isExploded={isExploded} />
 
       {/* Control panel */}
       <ControlPanel params={params} onChange={setParams} open={panelOpen} onToggle={() => setPanelOpen((v) => !v)} />
 
-      {/* Circular Lens */}
-      <div className="flex-1 flex items-center justify-center w-full px-6 py-2 z-10">
-        <div
-          className="lens-container relative"
-          style={{
-            width: 'min(78vw, 420px)',
-            height: 'min(78vw, 420px)',
-          }}
-        >
-          <ParticleScene data={particleData} mode={mode} gravity={gravity} params={params} />
-          {!hasImage && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10">
-              <div className="text-4xl animate-pulse" style={{ color: 'hsl(0 0% 100% / 0.2)' }}>✦</div>
-              <p className="text-xs font-mono tracking-wider uppercase text-center px-8" style={{ color: 'hsl(0 0% 100% / 0.3)' }}>
-                Upload a photo to begin
-              </p>
-              <div className="flex gap-3 mt-2">
-                <button
-                  onClick={() => cameraRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-display font-semibold active:scale-95 transition-transform"
-                  style={{ background: 'hsl(35 84% 62%)', color: 'hsl(30 8% 9%)' }}
-                >
-                  <Camera className="w-4 h-4" /> Capture
-                </button>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-display font-medium active:scale-95 transition-transform"
-                  style={{ border: '1px solid hsl(0 0% 100% / 0.2)', color: 'hsl(0 0% 100% / 0.7)' }}
-                >
-                  <Upload className="w-4 h-4" /> Upload
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Particle count */}
-      {particleCount > 0 && (
-        <p className="text-[10px] font-mono text-foreground/40 z-10 -mt-1">
-          {particleCount.toLocaleString()} particles
-        </p>
-      )}
-
-      {/* Controls area */}
-      <div className="w-full px-6 pb-6 z-10 space-y-4 safe-bottom">
-        {/* Gravity slider */}
-        <div className="flex items-center gap-4">
-          <span className="text-[10px] font-mono tracking-[0.15em] uppercase text-foreground/60 flex-shrink-0">
-            Wave Gravity
-          </span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={Math.round(gravity * 100)}
-            onChange={(e) => setGravity(Number(e.target.value) / 100)}
-            className="flex-1 h-[2px] appearance-none bg-foreground/20 rounded-full outline-none
-              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:cursor-pointer"
-          />
-          <span className="text-[10px] font-mono text-foreground/60 w-8 text-right">
-            {Math.round(gravity * 100)}%
-          </span>
-        </div>
-
-        {/* Mode selector */}
-        <div className="flex items-center justify-center gap-1 bg-foreground/5 rounded-full p-1">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setMode(m.id)}
-              className={`flex items-center gap-2 ${mode === m.id ? 'mode-pill' : 'mode-pill-inactive'}`}
+      {/* Overlay UI */}
+      <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-10">
+        {/* Top bar */}
+        <div className="flex justify-between items-start pointer-events-auto">
+          <div>
+            <h1
+              className="text-3xl md:text-4xl font-display font-black italic tracking-tighter drop-shadow-lg"
+              style={{
+                background: 'linear-gradient(135deg, hsl(var(--background)), hsl(90 30% 78%))',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
             >
-              {m.icon}
-              {m.label}
-            </button>
-          ))}
-        </div>
+              PIXEL BLOOM
+            </h1>
+            {particleCount > 0 && (
+              <p className="text-sm mt-1" style={{ color: 'hsl(0 0% 100% / 0.4)' }}>
+                Count: <span className="font-mono" style={{ color: 'hsl(var(--background))' }}>{particleCount.toLocaleString()}</span>
+              </p>
+            )}
+          </div>
 
-        {/* Hint */}
-        <p className="text-center text-[9px] font-mono tracking-[0.2em] uppercase text-foreground/35">
-          Multi-touch inside the lens
-        </p>
-
-        {/* Thumbnails */}
-        {images.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto no-scrollbar justify-center items-center">
-            {images.map((img) => (
+          <div className="flex gap-3">
+            {particleData && (
               <button
-                key={img.id}
-                onClick={() => handleSelectImage(img.id)}
-                className={`flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 transition-all active:scale-90 ${
-                  currentImageId === img.id ? 'border-primary scale-110' : 'border-transparent opacity-60'
-                }`}
+                onClick={() => setIsExploded(!isExploded)}
+                className="px-5 py-2 rounded-full font-display font-bold text-sm transition-all shadow-lg border"
+                style={{
+                  background: isExploded ? 'hsl(0 70% 50% / 0.2)' : 'hsl(var(--background) / 0.15)',
+                  borderColor: isExploded ? 'hsl(0 70% 50%)' : 'hsl(var(--background) / 0.5)',
+                  color: isExploded ? 'hsl(0 70% 70%)' : 'hsl(var(--background))',
+                }}
               >
-                <img src={img.src} alt="" className="w-full h-full object-cover" />
+                {isExploded ? '⚡ Assemble' : '💥 Explode'}
               </button>
-            ))}
+            )}
             <button
               onClick={() => fileRef.current?.click()}
-              className="flex-shrink-0 w-10 h-10 rounded-lg border-2 border-dashed border-foreground/20 flex items-center justify-center text-foreground/30 active:scale-90"
+              className="flex items-center gap-2 px-5 py-2 rounded-full font-display font-bold text-sm transition-all shadow-lg"
+              style={{
+                background: 'hsl(var(--background) / 0.15)',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid hsl(var(--background) / 0.3)',
+                color: 'hsl(var(--background))',
+              }}
             >
-              <Plus className="w-4 h-4" />
+              <Upload className="w-4 h-4" />
+              Upload Photo
             </button>
+          </div>
+        </div>
+
+        {/* Empty state */}
+        {images.length === 0 && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none" style={{ opacity: 0.5 }}>
+            <div className="text-6xl mb-4 animate-bounce">✦</div>
+            <p className="text-lg font-display" style={{ color: 'hsl(0 0% 100% / 0.6)' }}>Upload a photo to begin</p>
+          </div>
+        )}
+
+        {/* Bottom thumbnails */}
+        {images.length > 0 && (
+          <div
+            className="pointer-events-auto w-full rounded-2xl p-4"
+            style={{
+              background: 'hsl(var(--foreground) / 0.6)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid hsl(0 0% 100% / 0.1)',
+            }}
+          >
+            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+              {images.map((img) => (
+                <div
+                  key={img.id}
+                  onClick={() => setCurrentImageId(img.id)}
+                  className="thumb-container relative flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:scale-105"
+                  style={{
+                    borderColor: currentImageId === img.id ? 'hsl(var(--background))' : 'transparent',
+                    opacity: currentImageId === img.id ? 1 : 0.7,
+                    boxShadow: currentImageId === img.id ? '0 0 12px hsl(var(--background) / 0.4)' : 'none',
+                  }}
+                >
+                  <img src={img.src} alt="" className="w-full h-full object-cover" />
+                  {currentImageId === img.id && (
+                    <div className="absolute inset-0 animate-pulse pointer-events-none" style={{ background: 'hsl(var(--background) / 0.15)' }} />
+                  )}
+                  <button
+                    onClick={(e) => handleDelete(e, img.id)}
+                    className="absolute top-0.5 right-0.5 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow-md opacity-0 hover:opacity-100 transition-opacity"
+                    style={{
+                      background: 'hsl(0 70% 50%)',
+                      color: 'white',
+                    }}
+                    onMouseEnter={(e) => { (e.target as HTMLElement).style.opacity = '1'; }}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-lg border-2 border-dashed flex items-center justify-center transition-colors hover:border-white/40"
+                style={{
+                  borderColor: 'hsl(0 0% 100% / 0.2)',
+                  color: 'hsl(0 0% 100% / 0.4)',
+                }}
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      <style>{`
+        .thumb-container:hover button { opacity: 1 !important; }
+      `}</style>
     </div>
   );
 }

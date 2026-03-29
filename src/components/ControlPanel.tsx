@@ -24,26 +24,24 @@ export default function ControlPanel({ params, onChange, open, onToggle }: Contr
 
   return (
     <>
-      {/* Toggle button */}
       <button
         onClick={onToggle}
-        className="absolute top-12 right-5 z-30 p-2.5 rounded-full transition-all active:scale-90"
+        className="fixed top-6 right-6 z-30 p-2.5 rounded-full transition-all active:scale-90"
         style={{
-          background: open ? 'hsl(30 8% 9% / 0.8)' : 'transparent',
-          color: open ? 'hsl(90 22% 66%)' : 'hsl(30 8% 9% / 0.5)',
+          background: open ? 'hsl(var(--foreground) / 0.8)' : 'hsl(var(--foreground) / 0.3)',
+          color: open ? 'hsl(var(--background))' : 'hsl(var(--background) / 0.8)',
         }}
       >
         <Sliders className="w-5 h-5" />
       </button>
 
-      {/* Panel */}
       {open && (
         <div
-          className="absolute top-24 right-5 z-30 w-64 rounded-2xl p-4 space-y-3"
+          className="fixed top-16 right-6 z-30 w-72 rounded-2xl p-5 space-y-3"
           style={{
-            background: 'hsl(30 8% 9% / 0.85)',
+            background: 'hsl(var(--foreground) / 0.85)',
             backdropFilter: 'blur(20px)',
-            border: '1px solid hsl(0 0% 100% / 0.08)',
+            border: '1px solid hsl(0 0% 100% / 0.1)',
           }}
         >
           <p className="text-[10px] font-mono tracking-[0.15em] uppercase" style={{ color: 'hsl(0 0% 100% / 0.4)' }}>
@@ -52,10 +50,10 @@ export default function ControlPanel({ params, onChange, open, onToggle }: Contr
           {CONTROLS.map((c) => (
             <div key={c.key} className="space-y-1">
               <div className="flex justify-between">
-                <span className="text-[10px] font-mono" style={{ color: 'hsl(0 0% 100% / 0.6)' }}>
+                <span className="text-[11px] font-mono" style={{ color: 'hsl(0 0% 100% / 0.6)' }}>
                   {c.label}
                 </span>
-                <span className="text-[10px] font-mono" style={{ color: 'hsl(35 84% 62%)' }}>
+                <span className="text-[11px] font-mono" style={{ color: 'hsl(var(--primary))' }}>
                   {params[c.key].toFixed(1)}
                 </span>
               </div>
